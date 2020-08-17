@@ -2,6 +2,7 @@
 namespace Rest\Rules;
 
 use Rest\Handlers\IHandler;
+use Exception;
 
 class BaseRule implements IRule
 {
@@ -10,11 +11,12 @@ class BaseRule implements IRule
     protected $handler;
     protected $params;
     protected $ruleTemplate;
-    protected $TemplateForParams = '/{[a-z A-Z 0-9]*}/';
+    protected $TemplateForParams = '/{[a-z A-Z 0-9 - _]*}/';
+    protected $variables;
 
     public function __construct(string $uri, IHandler $handler){
         if(!empty($uri))
-            $this->templateURI = $uri;
+            $this->templateURI = ($uri[strlen($uri)-1] === '/') ? $uri.'index.php' : $uri;
         else
             throw new \Exception('URI not define');
 
@@ -26,11 +28,14 @@ class BaseRule implements IRule
         return $this;
     }
 
-    public function match() : bool{
+    public function match(string $uri) : bool{
+        $this->setRequestURI($uri);
         $__uriTemplate = $this->replaceParamsInUri();
-
-        if(preg_match('/^'.$__uriTemplate.'$/', $this->requestURI))
+        d($__uriTemplate);
+        if(preg_match('/^'.$__uriTemplate.'$/', $this->requestURI)) {
+            $this->variables = $this->getParamsValueFromURI();
             return true;
+        }
         return false;
     }
 
@@ -74,25 +79,39 @@ class BaseRule implements IRule
                 $this->params[] = trim($param, '{}');
     }
 
-    public function getParamsValueFromURI() : array{
-        $templateReg = $this->replaceParamsInUri();
+    protected function getParamsValueFromURI() : array{
+        $template = $this->requestURI;
 
-        $values = [];
         $arParamToVAlue = [];
-        $count = 0;
+        $notEmptyVariables = [];
 
-        preg_match_all('/'.$templateReg.'/', $this->requestURI, $values, PREG_PATTERN_ORDER);
+        $bites = explode('/', $this->templateURI);
 
-        d($templateReg, $this->requestURI, $values);
-
-        foreach ($this->params as $param){
-            $arParamToVAlue[$param] = $values[0][$count];
+        foreach ($bites as $bite){
+            if(!preg_match($this->TemplateForParams, $bite))
+                $template = str_replace($bite, '', $template);
         }
 
-        return [];
+        $variables = explode('/', preg_replace('/\/+/', '/', $template));
+
+        foreach ($variables as $variable){
+            if(!empty($variable))
+                $notEmptyVariables[] = $variable;
+        }
+
+        foreach ($notEmptyVariables as $key => $variable){
+            if(!empty($variable))
+                $arParamToVAlue[$this->params[$key]] = $variable;
+        }
+
+        foreach ($this->params as $param){
+
+        }
+
+        return $arParamToVAlue;
     }
 
-    public function setRequestURI(string $uri){
+    protected function setRequestURI(string $uri){
         if(!empty($uri))
             $this->requestURI = $uri;
         else
